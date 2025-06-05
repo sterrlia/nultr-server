@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use entity::{messages, users};
-use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter};
+use sea_orm::QueryOrder;
+use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter};
+use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::config;
@@ -66,6 +68,7 @@ impl MessageRepository {
         &self,
         first_user_id: i32,
         second_user_id: i32,
+        pagination: Pagination,
     ) -> anyhow::Result<Vec<messages::Model>> {
         let connection = self.lazy_connector.get_connection().await?;
 
@@ -81,10 +84,12 @@ impl MessageRepository {
                     .add(messages::Column::ToUserId.eq(first_user_id)),
             );
 
-        let messages = messages::Entity::find()
+        let paginator = messages::Entity::find()
             .filter(filter)
-            .all(connection)
-            .await?;
+            .order_by_desc(messages::Column::CreatedAt)
+            .paginate(connection, pagination.page_size);
+
+        let messages = paginator.fetch_page(pagination.page).await?;
 
         Ok(messages)
     }
@@ -114,4 +119,9 @@ impl LazyConnector {
             })
             .await
     }
+}
+#[derive(Deserialize)]
+pub struct Pagination {
+    pub page: u64,
+    pub page_size: u64,
 }

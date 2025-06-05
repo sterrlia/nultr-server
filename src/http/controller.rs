@@ -1,15 +1,11 @@
 use axum::{
-    Json,
-    body::Body,
-    extract,
-    http::{Response, StatusCode},
-    response::IntoResponse,
+    body::Body, extract::{self, Query}, http::{Response, StatusCode}, response::IntoResponse, Json
 };
 use chrono::NaiveDateTime;
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 
-use crate::{auth, db::entity::users, state};
+use crate::{auth, db::{self, entity::users}, state};
 
 use super::ErrorResponse;
 
@@ -38,12 +34,14 @@ pub async fn get_users(
 
 #[derive(Serialize)]
 struct MessageResponse {
+    id: i32,
     content: String,
     created_at: NaiveDateTime,
 }
 
 pub async fn get_messages(
     extract::Path(user_id): extract::Path<i32>,
+    Query(pagination): Query<db::Pagination>,
     extract::State(state): extract::State<state::ServiceState>,
     claims: auth::jwt::Claims
 ) -> Result<impl IntoResponse, ErrorResponse> {
@@ -55,12 +53,13 @@ pub async fn get_messages(
 
     let messages = state
         .message_repository
-        .get_messages_between_users(user_id, claims.user_id)
+        .get_messages_between_users(user_id, claims.user_id, pagination)
         .await?;
 
     let message_response: Vec<MessageResponse> = messages
         .iter()
         .map(|message| MessageResponse {
+            id: message.id,
             content: message.content.clone(),
             created_at: message.created_at,
         })
