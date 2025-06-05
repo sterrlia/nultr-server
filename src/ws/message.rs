@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
-pub enum OutputWebsocketMessage {
+pub enum Response {
     Ok,
-    MessageFromUser {
-        username: String,
+    Message {
+        user_id: i32,
         content: String
     },
     WrongFormat,
@@ -15,8 +15,8 @@ pub enum OutputWebsocketMessage {
     ChannelError,
 }
 
-impl From<OutputWebsocketMessage> for ws::Message {
-    fn from(msg: OutputWebsocketMessage) -> Self {
+impl From<Response> for ws::Message {
+    fn from(msg: Response) -> Self {
         match serde_json::to_string(&msg) {
             Ok(json_string) => ws::Message::Text(json_string.into()),
             Err(error) => {
@@ -30,7 +30,7 @@ impl From<OutputWebsocketMessage> for ws::Message {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
-pub enum InputWebsocketMessage {
-    Health,
-    MessageToUser { username: String, content: String },
+pub enum Request {
+    MessageToUser { user_id: i32, content: String },
 }
+
