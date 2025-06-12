@@ -1,23 +1,30 @@
 use axum::{
-    body::Body, extract::{self, Query}, http::{Response, StatusCode}, response::IntoResponse, Json
+    Json,
+    extract::{self, Query},
+    http::StatusCode,
+    response::IntoResponse,
 };
 use chrono::NaiveDateTime;
-use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{auth, db::{self, entity::users}, state};
+use crate::{
+    auth,
+    db::{self, entity::users},
+    state,
+};
 
 use super::ErrorResponse;
 
 #[derive(Serialize)]
 struct UserResponse {
     id: i32,
-    name: String,
+    username: String,
 }
 
 pub async fn get_users(
     extract::State(state): extract::State<state::ServiceState>,
-    _claims: auth::jwt::Claims
+    _claims: auth::jwt::Claims,
 ) -> Result<impl IntoResponse, ErrorResponse> {
     let users = state.user_repository.get_all().await?;
 
@@ -25,41 +32,48 @@ pub async fn get_users(
         .iter()
         .map(|user| UserResponse {
             id: user.id,
-            name: user.username.clone(),
+            username: user.username.clone(),
         })
         .collect();
 
     Ok((StatusCode::OK, Json(user_response)).into_response())
 }
 
+#[derive(Deserialize)]
+pub struct GetMessagesRequest {
+    pub user_id: i32,
+    pub pagination: db::Pagination,
+}
+
 #[derive(Serialize)]
 struct MessageResponse {
-    id: i32,
-    content: String,
-    created_at: NaiveDateTime,
+    pub id: Uuid,
+    pub user_id: i32,
+    pub content: String,
+    pub created_at: NaiveDateTime,
 }
 
 pub async fn get_messages(
-    extract::Path(user_id): extract::Path<i32>,
-    Query(pagination): Query<db::Pagination>,
+    Query(request): Query<GetMessagesRequest>,
     extract::State(state): extract::State<state::ServiceState>,
-    claims: auth::jwt::Claims
+    claims: auth::jwt::Claims,
 ) -> Result<impl IntoResponse, ErrorResponse> {
     state
         .user_repository
-        .get_by_id(user_id)
+        .get_by_id(request.user_id)
         .await?
         .ok_or(ErrorResponse::UserNotFound)?;
 
     let messages = state
         .message_repository
-        .get_messages_between_users(user_id, claims.user_id, pagination)
+        .get_messages_between_users(request.user_id, claims.user_id, request.pagination)
         .await?;
 
     let message_response: Vec<MessageResponse> = messages
         .iter()
         .map(|message| MessageResponse {
             id: message.id,
+            user_id: message.from_user_id,
             content: message.content.clone(),
             created_at: message.created_at,
         })
@@ -76,8 +90,8 @@ pub struct LoginRequest {
 
 #[derive(Serialize)]
 pub struct LoginResponse {
-    pub access_token: String,
-    pub token_type: String,
+    pub user_id: i32,
+    pub token: String,
 }
 
 pub async fn login(
@@ -97,8 +111,8 @@ pub async fn login(
         if verified {
             let token = state.jwt_encoder.encode(user.id)?;
             let response = LoginResponse {
-                access_token: token,
-                token_type: "Bearer".to_string(),
+                user_id: user.id,
+                token
             };
 
             Ok((StatusCode::OK, Json(response)))

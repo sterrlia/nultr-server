@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -17,7 +18,7 @@ use crate::db::entity::messages;
 use crate::state::MessageFromUser;
 use crate::{auth, state};
 
-use super::message::{Request, Response};
+use super::message::{MessageResponse, Request, Response};
 
 pub struct Controller {
     pub mutex_state: Arc<Mutex<state::MutexState>>,
@@ -63,9 +64,11 @@ impl Controller {
     }
 
     async fn process_user_message(&mut self, message: MessageFromUser) -> anyhow::Result<()> {
-        let message_to_send = Response::Message {
+        let message_to_send = MessageResponse {
+            id: Uuid::new_v4(),
             user_id: message.from_user_id.clone(),
             content: message.content.clone(),
+            created_at: Utc::now().naive_utc()
         };
 
         let message_model = messages::ActiveModel {
@@ -82,7 +85,7 @@ impl Controller {
             .await?;
 
         self.ws_sender
-            .send(message_to_send.into())
+            .send(Response::Message(message_to_send).into())
             .await
             .map_err(|err| anyhow!(err))
     }
@@ -110,13 +113,14 @@ impl Controller {
 
         let message_to_send = match result_of_parsing {
             Ok(input_message) => match input_message {
-                Request::MessageToUser { user_id, content } => {
+                Request::Message(message) => {
                     let message_to_send = MessageFromUser {
+                        id: message.id,
                         from_user_id: self.claims.user_id,
-                        content,
+                        content: message.content,
                     };
 
-                    self.send_message_to_user(user_id, message_to_send).await?
+                    self.send_message_to_user(message.user_id, message_to_send).await?
                 }
             },
             Err(error) => {

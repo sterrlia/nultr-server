@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Messages::Table)
                     .if_not_exists()
-                    .col(pk_auto(Messages::Id))
+                    .col(pk_uuid(Messages::Id))
                     .col(date_time(Messages::CreatedAt))
                     .col(string(Messages::Content))
                     .col(integer(Messages::FromUserId))
@@ -76,6 +76,7 @@ enum Users {
 enum Messages {
     Table,
     Id,
+    Uuid,
     FromUserId,
     ToUserId,
     Content,

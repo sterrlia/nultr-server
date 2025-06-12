@@ -1,14 +1,21 @@
 use axum::extract::ws;
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MessageResponse {
+    pub id: Uuid,
+    pub user_id: i32,
+    pub content: String,
+    pub created_at: NaiveDateTime
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum Response {
     Ok,
-    Message {
-        user_id: i32,
-        content: String
-    },
+    Message(MessageResponse),
     WrongFormat,
     WrongJsonFormat,
     UserNotFound,
@@ -29,8 +36,14 @@ impl From<Response> for ws::Message {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum Request {
-    MessageToUser { user_id: i32, content: String },
+pub struct MessageRequest {
+    pub id: Uuid,
+    pub user_id: i32,
+    pub content: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum Request {
+    Message(MessageRequest),
+}

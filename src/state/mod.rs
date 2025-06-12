@@ -1,10 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use crate::{auth, db};
 
 pub struct MessageFromUser {
+    pub id: Uuid,
     pub from_user_id: i32,
     pub content: String,
 }
