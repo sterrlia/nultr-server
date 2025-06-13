@@ -14,7 +14,7 @@ pub struct MessageResponse {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum Response {
-    Ok,
+    MessageSent,
     Message(MessageResponse),
     WrongFormat,
     WrongJsonFormat,

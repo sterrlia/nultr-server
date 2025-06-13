@@ -15,6 +15,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     AddUser { username: String },
+    DeleteUser { username: String }
 }
 
 pub async fn perform(command: Command) {
@@ -47,6 +48,21 @@ pub async fn try_perform(state: state::CliState, command: Command) -> anyhow::Re
             state.user_repository.insert(user_model).await?;
 
             println!("User created. Generated password: {password}");
+
+            Ok(())
+        }
+        Command::DeleteUser { username } => {
+            let user_result = state
+                .user_repository
+                .get_by_username(username)
+                .await?;
+
+            if let Some(user) = user_result {
+                state.user_repository.delete(user).await?;
+                println!("User deleted");
+            } else {
+                println!("User not found");
+            }
 
             Ok(())
         }

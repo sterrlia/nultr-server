@@ -42,7 +42,9 @@ pub async fn get_users(
 #[derive(Deserialize)]
 pub struct GetMessagesRequest {
     pub user_id: i32,
-    pub pagination: db::Pagination,
+    // :TODO: serde flatten does not work
+    pub page: u64,
+    pub page_size: u64,
 }
 
 #[derive(Serialize)]
@@ -66,7 +68,14 @@ pub async fn get_messages(
 
     let messages = state
         .message_repository
-        .get_messages_between_users(request.user_id, claims.user_id, request.pagination)
+        .get_messages_between_users(
+            request.user_id,
+            claims.user_id,
+            db::Pagination {
+                page: request.page,
+                page_size: request.page_size,
+            },
+        )
         .await?;
 
     let message_response: Vec<MessageResponse> = messages
@@ -112,7 +121,7 @@ pub async fn login(
             let token = state.jwt_encoder.encode(user.id)?;
             let response = LoginResponse {
                 user_id: user.id,
-                token
+                token,
             };
 
             Ok((StatusCode::OK, Json(response)))

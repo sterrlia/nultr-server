@@ -76,6 +76,8 @@ async fn handle_socket(
         ws_receiver,
     };
 
+    tracing::error!("Websocket handler started {addr}");
+
     while let Some(msg) = handler.get_message().await {
         if let Err(error) = handler.process(msg).await {
             tracing::error!("Websocket handle message error: {error}");

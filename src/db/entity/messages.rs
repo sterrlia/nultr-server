@@ -7,6 +7,7 @@ use chrono::NaiveDateTime;
 #[sea_orm(table_name = "messages")]
 pub struct Model {
     #[sea_orm(primary_key)]
+    #[sea_orm(auto_increment = false)]
     pub id: Uuid,
     pub created_at: NaiveDateTime,
     pub content: String,

@@ -48,6 +48,16 @@ impl UserRepository {
 
         Ok(())
     }
+
+    pub async fn delete(&self, model: users::Model) -> anyhow::Result<()> {
+        let connection = self.lazy_connector.get_connection().await?;
+
+        let active_model: users::ActiveModel = model.into();
+
+        active_model.delete(connection).await?;
+
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -56,10 +66,11 @@ pub struct MessageRepository {
 }
 
 impl MessageRepository {
-    pub async fn insert(&self, model: messages::ActiveModel) -> anyhow::Result<()> {
+    pub async fn insert(&self, model: messages::Model) -> anyhow::Result<()> {
         let connection = self.lazy_connector.get_connection().await?;
 
-        model.insert(connection).await?;
+        let active_model: messages::ActiveModel = model.into();
+        active_model.insert(connection).await?;
 
         Ok(())
     }

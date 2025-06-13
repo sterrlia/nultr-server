@@ -1,7 +1,7 @@
 use anyhow::anyhow;
-use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use axum::extract::ws;
 
@@ -18,7 +18,7 @@ use crate::db::entity::messages;
 use crate::state::MessageFromUser;
 use crate::{auth, state};
 
-use super::message::{MessageResponse, Request, Response};
+use super::message::{MessageRequest, MessageResponse, Request, Response};
 
 pub struct Controller {
     pub mutex_state: Arc<Mutex<state::MutexState>>,
@@ -68,21 +68,8 @@ impl Controller {
             id: Uuid::new_v4(),
             user_id: message.from_user_id.clone(),
             content: message.content.clone(),
-            created_at: Utc::now().naive_utc()
+            created_at: Utc::now().naive_utc(),
         };
-
-        let message_model = messages::ActiveModel {
-            from_user_id: Set(message.from_user_id),
-            to_user_id: Set(self.claims.user_id),
-            content: Set(message.content),
-            created_at: Set(Utc::now().naive_utc()),
-            ..Default::default()
-        };
-
-        self.service_state
-            .message_repository
-            .insert(message_model)
-            .await?;
 
         self.ws_sender
             .send(Response::Message(message_to_send).into())
@@ -114,13 +101,8 @@ impl Controller {
         let message_to_send = match result_of_parsing {
             Ok(input_message) => match input_message {
                 Request::Message(message) => {
-                    let message_to_send = MessageFromUser {
-                        id: message.id,
-                        from_user_id: self.claims.user_id,
-                        content: message.content,
-                    };
-
-                    self.send_message_to_user(message.user_id, message_to_send).await?
+                    self.send_message_to_user(message)
+                        .await?
                 }
             },
             Err(error) => {
@@ -138,23 +120,49 @@ impl Controller {
 
     async fn send_message_to_user(
         &mut self,
-        user_id: i32,
-        message: MessageFromUser,
+        message: MessageRequest
     ) -> anyhow::Result<Response> {
+        let user = self
+            .service_state
+            .user_repository
+            .get_by_id(message.user_id)
+            .await?;
+
+        if user == None {
+            return Ok(Response::UserNotFound);
+        }
+
+        let message_model = messages::Model {
+            id: message.id,
+            from_user_id: self.claims.user_id,
+            to_user_id: message.user_id,
+            content: message.content.clone(),
+            created_at: Utc::now().naive_utc()
+        };
+
+        self.service_state
+            .message_repository
+            .insert(message_model)
+            .await?;
+
         let found_user_sender = self
             .mutex_state
             .lock()
             .await
             .user_message_sender_map
-            .get(&user_id)
+            .get(&message.user_id)
             .cloned();
 
         if let Some(user_sender) = found_user_sender {
-            user_sender.send(message).map_err(|err| anyhow!(err))?;
+            let message_to_send = MessageFromUser {
+                id: message.id,
+                from_user_id: self.claims.user_id,
+                content: message.content,
+            };
 
-            Ok(Response::Ok)
-        } else {
-            Ok(Response::UserNotFound)
+            user_sender.send(message_to_send).map_err(|err| anyhow!(err))?;
         }
+
+        Ok(Response::MessageSent)
     }
 }

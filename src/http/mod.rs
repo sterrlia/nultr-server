@@ -4,7 +4,7 @@ use serde::Serialize;
 pub mod controller;
 
 #[derive(Serialize)]
-#[serde(tag = "code")]
+#[serde(tag = "type")]
 pub enum ErrorResponse {
     InternalServerError,
     UserNotFound,
