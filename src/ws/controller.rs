@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use shared_lib::request::{
+use nultr_shared_lib::request::{
     WsErrorResponse, WsMessageRequest, WsMessageResponse, WsOkResponse, WsRequest, WsResponse,
 };
 use std::collections::HashMap;

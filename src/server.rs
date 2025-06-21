@@ -3,7 +3,7 @@ use axum::{
     extract::{self, Query},
     routing::{any, post},
 };
-use shared_lib::request::{GetMessagesRequest, GetUsersRequest, LoginRequest};
+use nultr_shared_lib::request::{GetMessagesRequest, GetUsersRequest, LoginRequest};
 use rust_api_integrator::generate_routes;
 use tokio::sync::Mutex;
 

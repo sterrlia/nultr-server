@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{self, Query},
 };
-use shared_lib::{
+use nultr_shared_lib::{
     request::{
         AuthenticatedUnexpectedErrorResponse, GetMessagesErrorResponse, GetMessagesRequest,
         GetMessagesResponse, GetUsersErrorResponse, GetUsersResponse, LoginErrorResponse,
