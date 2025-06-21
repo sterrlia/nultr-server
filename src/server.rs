@@ -3,6 +3,8 @@ use axum::{
     extract::{self, Query},
     routing::{any, post},
 };
+use shared_lib::request::{GetMessagesRequest, GetUsersRequest, LoginRequest};
+use rust_api_integrator::generate_routes;
 use tokio::sync::Mutex;
 
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
@@ -12,17 +14,17 @@ use tower_http::{
 };
 
 use axum::extract::connect_info::ConnectInfo;
-use axum::routing::get;
 
 use crate::{auth, config, http, state, ws};
 
 pub async fn serve() {
     let assets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
-    let http_api_routes = Router::new()
-        .route("/login", post(http::controller::login))
-        .route("/get-users", get(http::controller::get_users))
-        .route("/get-messages", get(http::controller::get_messages));
+    let http_api_routes = generate_routes! {
+        LoginRequest => http::controller::login,
+        GetUsersRequest => http::controller::get_users,
+        GetMessagesRequest => http::controller::get_messages,
+    };
 
     let ws_state = Arc::new(Mutex::new(state::MutexState {
         user_message_sender_map: HashMap::new(),
@@ -31,7 +33,7 @@ pub async fn serve() {
     // build our application with some routes
     let app = Router::new()
         .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
-        .nest("/api", http_api_routes)
+        .merge(http_api_routes)
         .route(
             "/ws",
             any({

@@ -1,70 +1,59 @@
 use axum::{
     Json,
     extract::{self, Query},
-    http::StatusCode,
-    response::IntoResponse,
 };
-use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use shared_lib::{
+    request::{
+        AuthenticatedUnexpectedErrorResponse, GetMessagesErrorResponse, GetMessagesRequest,
+        GetMessagesResponse, GetUsersErrorResponse, GetUsersResponse, LoginErrorResponse,
+        LoginRequest, LoginResponse, MessageResponse, UnexpectedErrorResponse, UserResponse,
+    },
+    util::MonoResult,
+};
+use rust_api_integrator::http::client::Response;
 
 use crate::{
     auth,
-    db::{self, entity::users},
+    db::{self},
     state,
 };
 
-use super::ErrorResponse;
-
-#[derive(Serialize)]
-struct UserResponse {
-    id: i32,
-    username: String,
-}
+pub type AuthenticatedResponse<T, E> =
+    MonoResult<Response<T, E, AuthenticatedUnexpectedErrorResponse>>;
+pub type UnauthenticatedResponse<T, E> = MonoResult<Response<T, E, UnexpectedErrorResponse>>;
 
 pub async fn get_users(
     extract::State(state): extract::State<state::ServiceState>,
     _claims: auth::jwt::Claims,
-) -> Result<impl IntoResponse, ErrorResponse> {
+) -> AuthenticatedResponse<GetUsersResponse, GetUsersErrorResponse> {
     let users = state.user_repository.get_all().await?;
 
-    let user_response: Vec<UserResponse> = users
-        .iter()
-        .map(|user| UserResponse {
-            id: user.id,
-            username: user.username.clone(),
-        })
-        .collect();
+    let user_response = GetUsersResponse(
+        users
+            .iter()
+            .map(|user| UserResponse {
+                id: user.id,
+                username: user.username.clone(),
+            })
+            .collect(),
+    );
 
-    Ok((StatusCode::OK, Json(user_response)).into_response())
-}
-
-#[derive(Deserialize)]
-pub struct GetMessagesRequest {
-    pub user_id: i32,
-    // :TODO: serde flatten does not work
-    pub page: u64,
-    pub page_size: u64,
-}
-
-#[derive(Serialize)]
-struct MessageResponse {
-    pub id: Uuid,
-    pub user_id: i32,
-    pub content: String,
-    pub created_at: NaiveDateTime,
+    Ok(Response::Ok(user_response))
 }
 
 pub async fn get_messages(
     Query(request): Query<GetMessagesRequest>,
     extract::State(state): extract::State<state::ServiceState>,
     claims: auth::jwt::Claims,
-) -> Result<impl IntoResponse, ErrorResponse> {
-    state
+) -> AuthenticatedResponse<GetMessagesResponse, GetMessagesErrorResponse> {
+    let user = state
         .user_repository
         .get_by_id(request.user_id)
-        .await?
-        .ok_or(ErrorResponse::UserNotFound)?;
+        .await?;
+
+    if user == None {
+        return Err(GetMessagesErrorResponse::UserNotFound.into());
+    }
 
     let messages = state
         .message_repository
@@ -78,35 +67,25 @@ pub async fn get_messages(
         )
         .await?;
 
-    let message_response: Vec<MessageResponse> = messages
-        .iter()
-        .map(|message| MessageResponse {
-            id: message.id,
-            user_id: message.from_user_id,
-            content: message.content.clone(),
-            created_at: message.created_at,
-        })
-        .collect();
+    let message_response = GetMessagesResponse(
+        messages
+            .iter()
+            .map(|message| MessageResponse {
+                id: message.id,
+                user_id: message.from_user_id,
+                content: message.content.clone(),
+                created_at: message.created_at,
+            })
+            .collect(),
+    );
 
-    Ok((StatusCode::OK, Json(message_response)))
-}
-
-#[derive(Deserialize)]
-pub struct LoginRequest {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Serialize)]
-pub struct LoginResponse {
-    pub user_id: i32,
-    pub token: String,
+    Ok(message_response.into())
 }
 
 pub async fn login(
     extract::State(state): extract::State<state::ServiceState>,
     Json(input): Json<LoginRequest>,
-) -> Result<impl IntoResponse, ErrorResponse> {
+) -> UnauthenticatedResponse<LoginResponse, LoginErrorResponse> {
     let user_result = state
         .user_repository
         .get_by_username(input.username)
@@ -124,11 +103,11 @@ pub async fn login(
                 token,
             };
 
-            Ok((StatusCode::OK, Json(response)))
+            Ok(response.into())
         } else {
-            Err(ErrorResponse::AccessDenied)
+            Err(LoginErrorResponse::AccessDenied.into())
         }
     } else {
-        Err(ErrorResponse::AccessDenied)
+        Err(LoginErrorResponse::AccessDenied.into())
     }
 }

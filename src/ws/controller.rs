@@ -1,4 +1,7 @@
 use anyhow::anyhow;
+use shared_lib::request::{
+    WsErrorResponse, WsMessageRequest, WsMessageResponse, WsOkResponse, WsRequest, WsResponse,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -17,8 +20,6 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use crate::db::entity::messages;
 use crate::state::MessageFromUser;
 use crate::{auth, state};
-
-use super::message::{MessageRequest, MessageResponse, Request, Response};
 
 pub struct Controller {
     pub mutex_state: Arc<Mutex<state::MutexState>>,
@@ -64,64 +65,80 @@ impl Controller {
     }
 
     async fn process_user_message(&mut self, message: MessageFromUser) -> anyhow::Result<()> {
-        let message_to_send = MessageResponse {
+        let message_response = WsMessageResponse {
             id: Uuid::new_v4(),
             user_id: message.from_user_id.clone(),
             content: message.content.clone(),
             created_at: Utc::now().naive_utc(),
         };
 
+        let message_to_send = WsResponse::Ok(WsOkResponse::Message(message_response));
+
+        let serialize_result: Result<String, serde_json::Error> =
+            serde_json::to_string(&message_to_send);
+
+        let ws_response = match serialize_result {
+            Ok(serialized_data) => serialized_data,
+            Err(error) => {
+                tracing::error!("Response serialization error {:?}", error);
+
+                let message_to_send = WsResponse::Err(WsErrorResponse::Fatal);
+
+                serde_json::to_string(&message_to_send).map_err(|err| anyhow!(err))?
+            }
+        };
+
         self.ws_sender
-            .send(Response::Message(message_to_send).into())
+            .send(ws::Message::Text(ws_response.into()))
             .await
             .map_err(|err| anyhow!(err))
     }
 
     async fn process_ws_message(&mut self, message: ws::Message) -> anyhow::Result<()> {
-        match message {
-            ws::Message::Text(t) => {
-                let message_content = t.to_string();
-                self.process_text_message(message_content).await
-            }
-            _ => {
-                let message_to_send = Response::WrongFormat;
+        let message_to_send = if let ws::Message::Text(text) = message {
+            let message_content = text.to_string();
+            self.process_text_message(message_content).await.into()
+        } else {
+            WsResponse::Err(WsErrorResponse::WrongFormat)
+        };
 
-                self.ws_sender
-                    .send(message_to_send.into())
-                    .await
-                    .map_err(|err| anyhow!(err))
-            }
-        }
-    }
+        let serialize_result: Result<String, serde_json::Error> =
+            serde_json::to_string(&message_to_send);
 
-    async fn process_text_message(&mut self, message: String) -> anyhow::Result<()> {
-        let result_of_parsing: Result<Request, serde_json::Error> =
-            serde_json::from_str(message.as_str());
-
-        let message_to_send = match result_of_parsing {
-            Ok(input_message) => match input_message {
-                Request::Message(message) => {
-                    self.send_message_to_user(message)
-                        .await?
-                }
-            },
+        let ws_response = match serialize_result {
+            Ok(serialized_data) => serialized_data,
             Err(error) => {
-                tracing::warn!("Request parsing error: {error}");
+                tracing::error!("Response serialization error {:?}", error);
 
-                Response::WrongJsonFormat
+                let message_to_send = WsResponse::Err(WsErrorResponse::Fatal);
+
+                serde_json::to_string(&message_to_send).map_err(|err| anyhow!(err))?
             }
         };
 
         self.ws_sender
-            .send(message_to_send.into())
+            .send(ws::Message::Text(ws_response.into()))
             .await
             .map_err(|err| anyhow!(err))
     }
 
+    async fn process_text_message(
+        &mut self,
+        message: String,
+    ) -> Result<WsOkResponse, WsErrorResponse> {
+        let request: WsRequest = serde_json::from_str(message.as_str())
+            .inspect_err(|err| tracing::warn!("Request parsing error: {:?}", err))
+            .map_err(|_| WsErrorResponse::WrongJsonFormat)?;
+
+        match request {
+            WsRequest::Message(message) => self.send_message_to_user(message).await,
+        }
+    }
+
     async fn send_message_to_user(
         &mut self,
-        message: MessageRequest
-    ) -> anyhow::Result<Response> {
+        message: WsMessageRequest,
+    ) -> Result<WsOkResponse, WsErrorResponse> {
         let user = self
             .service_state
             .user_repository
@@ -129,7 +146,7 @@ impl Controller {
             .await?;
 
         if user == None {
-            return Ok(Response::UserNotFound);
+            return Err(WsErrorResponse::UserNotFound);
         }
 
         let message_model = messages::Model {
@@ -137,7 +154,7 @@ impl Controller {
             from_user_id: self.claims.user_id,
             to_user_id: message.user_id,
             content: message.content.clone(),
-            created_at: Utc::now().naive_utc()
+            created_at: Utc::now().naive_utc(),
         };
 
         self.service_state
@@ -160,9 +177,11 @@ impl Controller {
                 content: message.content,
             };
 
-            user_sender.send(message_to_send).map_err(|err| anyhow!(err))?;
+            user_sender
+                .send(message_to_send)
+                .map_err(|err| anyhow!(err))?;
         }
 
-        Ok(Response::MessageSent)
+        Ok(WsOkResponse::MessageSent)
     }
 }

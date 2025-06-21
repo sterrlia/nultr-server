@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use serde_json::json;
 use tokio::sync::{
     Mutex,
     mpsc::{self, UnboundedReceiver},
