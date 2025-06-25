@@ -32,4 +32,4 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 url = { version = "2.5.4", features = ["std", "serde"] }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 nultr-shared-lib = { path = "../shared-lib" }
-rust-api-integrator = { path = "../rust-api-integrator", features = ["axum-integration"] }
+rust-api-kit = { path = "../rust-api-kit", features = ["axum-integration"] }

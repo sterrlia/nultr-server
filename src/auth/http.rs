@@ -6,7 +6,7 @@ use axum::{
     response::IntoResponse,
 };
 use headers::{Authorization, authorization::Bearer};
-use rust_api_integrator::http::client::Response;
+use rust_api_kit::http::client::Response;
 use nultr_shared_lib::request::AuthError;
 
 use crate::state;

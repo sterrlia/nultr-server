@@ -10,7 +10,7 @@ use nultr_shared_lib::{
     },
     util::MonoResult,
 };
-use rust_api_integrator::http::client::Response;
+use rust_api_kit::http::client::Response;
 
 use crate::{
     auth,

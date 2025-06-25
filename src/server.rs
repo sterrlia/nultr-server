@@ -4,7 +4,7 @@ use axum::{
     routing::{any, post},
 };
 use nultr_shared_lib::request::{GetMessagesRequest, GetUsersRequest, LoginRequest};
-use rust_api_integrator::generate_routes;
+use rust_api_kit::generate_routes;
 use tokio::sync::Mutex;
 
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
