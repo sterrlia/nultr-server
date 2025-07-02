@@ -3,4 +3,6 @@
 pub mod prelude;
 
 pub mod messages;
+pub mod rooms;
+pub mod rooms_users;
 pub mod users;

@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use rand::{Rng, distr::Alphanumeric};
-use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveValue::Set, IntoActiveModel};
 
-use crate::{db::entity::users, state};
+use crate::{db::{entity::users, RepositoryTrait}, state};
 
 #[derive(Parser)]
 #[command(name = "manager")]
@@ -58,7 +58,7 @@ pub async fn try_perform(state: state::CliState, command: Command) -> anyhow::Re
                 .await?;
 
             if let Some(user) = user_result {
-                state.user_repository.delete(user).await?;
+                state.user_repository.delete(user.into_active_model()).await?;
                 println!("User deleted");
             } else {
                 println!("User not found");

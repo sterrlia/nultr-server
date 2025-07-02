@@ -3,13 +3,11 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "users")]
+#[sea_orm(table_name = "rooms")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    #[sea_orm(unique)]
-    pub username: String,
-    pub password_hash: String,
+    pub name: String
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -32,12 +30,12 @@ impl Related<super::rooms_users::Entity> for Entity {
     }
 }
 
-impl Related<super::rooms::Entity> for Entity {
+impl Related<super::users::Entity> for Entity {
     fn to() -> RelationDef {
-        super::rooms_users::Relation::Rooms.def()
+        super::rooms_users::Relation::Users.def()
     }
     fn via() -> Option<RelationDef> {
-        Some(super::rooms_users::Relation::Users.def().rev())
+        Some(super::rooms_users::Relation::Rooms.def().rev())
     }
 }
 

@@ -4,17 +4,23 @@ use axum::{
 };
 use nultr_shared_lib::{
     request::{
-        AuthenticatedUnexpectedErrorResponse, GetMessagesErrorResponse, GetMessagesRequest,
-        GetMessagesResponse, GetUsersErrorResponse, GetUsersResponse, LoginErrorResponse,
-        LoginRequest, LoginResponse, MessageResponse, UnexpectedErrorResponse, UserResponse,
+        AuthenticatedUnexpectedErrorResponse, CreateRoomErrorResponse, CreateRoomRequest,
+        CreateRoomResponse, GetMessagesErrorResponse, GetMessagesRequest, GetMessagesResponse,
+        GetRoomsErrorResponse, GetRoomsRequest, GetRoomsResponse, GetUsersErrorResponse,
+        GetUsersResponse, LoginErrorResponse, LoginRequest, LoginResponse, MessageResponse,
+        RoomResponse, UnexpectedErrorResponse, UserResponse,
     },
     util::MonoResult,
 };
-use rust_api_kit::http::client::Response;
+use rust_api_kit::http::client::{Response};
+use sea_orm::ActiveValue::Set;
 
 use crate::{
     auth,
-    db::{self},
+    db::{
+        self, RepositoryTrait,
+        entity::rooms::{self, ActiveModel},
+    },
     state,
 };
 
@@ -41,25 +47,72 @@ pub async fn get_users(
     Ok(Response::Ok(user_response))
 }
 
+pub async fn get_rooms(
+    extract::State(state): extract::State<state::ServiceState>,
+    claims: auth::jwt::Claims,
+) -> AuthenticatedResponse<GetRoomsResponse, GetRoomsErrorResponse> {
+    let rooms = state
+        .room_repository
+        .get_by_user_id(claims.user_id)
+        .await?
+        .iter()
+        .map(|room| RoomResponse {
+            id: room.id,
+            name: room.name.clone(),
+        })
+        .collect();
+
+    Ok(Response::Ok(GetRoomsResponse(rooms)))
+}
+
+pub async fn create_room(
+    extract::State(state): extract::State<state::ServiceState>,
+    claims: auth::jwt::Claims,
+    Json(input): Json<CreateRoomRequest>,
+) -> AuthenticatedResponse<CreateRoomResponse, CreateRoomErrorResponse> {
+    let room = state
+        .room_repository
+        .insert(rooms::ActiveModel {
+            name: Set(input.name),
+            ..Default::default()
+        })
+        .await?;
+
+    state
+        .room_repository
+        .add_users_to_room(room.id, vec![claims.user_id, input.receiver_user_id])
+        .await?;
+
+    Ok(Response::Ok(CreateRoomResponse {
+        id: room.id,
+        name: room.name,
+    }))
+}
+
 pub async fn get_messages(
     Query(request): Query<GetMessagesRequest>,
     extract::State(state): extract::State<state::ServiceState>,
     claims: auth::jwt::Claims,
 ) -> AuthenticatedResponse<GetMessagesResponse, GetMessagesErrorResponse> {
-    let user = state
-        .user_repository
-        .get_by_id(request.user_id)
+    let room_exists = state.room_repository.exists_by_id(request.room_id).await?;
+    if !room_exists {
+        return Err(GetMessagesErrorResponse::RoomNotFound.into());
+    }
+
+    let room_users = state
+        .room_repository
+        .get_users_by_room(request.room_id)
         .await?;
 
-    if user == None {
-        return Err(GetMessagesErrorResponse::UserNotFound.into());
+    let is_member_of_room = room_users.iter().any(|user| user.id == claims.user_id);
+    if !is_member_of_room {
+        return Err(GetMessagesErrorResponse::NotMemberOfRoom.into());
     }
 
     let messages = state
         .message_repository
-        .get_messages_between_users(
-            request.user_id,
-            claims.user_id,
+        .get_messages_by_room(
+            request.room_id,
             db::Pagination {
                 page: request.page,
                 page_size: request.page_size,
@@ -71,10 +124,11 @@ pub async fn get_messages(
         messages
             .iter()
             .map(|message| MessageResponse {
-                id: message.id,
-                user_id: message.from_user_id,
+                uuid: message.uuid,
+                user_id: message.user_id,
                 content: message.content.clone(),
                 created_at: message.created_at,
+                read: message.read,
             })
             .collect(),
     );

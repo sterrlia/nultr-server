@@ -1,114 +1,79 @@
-use std::sync::Arc;
-
-use entity::{messages, users};
-use sea_orm::QueryOrder;
-use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::prelude::async_trait::async_trait;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel,
+    JoinType, PaginatorTrait, QueryFilter, QuerySelect, RelationTrait,
+};
+use sea_orm::{ModelTrait, PrimaryKeyTrait, QueryOrder};
 use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::config;
 
 pub mod entity;
+pub mod repository;
 
-#[derive(Clone)]
-pub struct UserRepository {
-    pub lazy_connector: Arc<LazyConnector>,
+#[async_trait]
+pub trait DbConnectionContainerTrait {
+    async fn get_connection(&self) -> anyhow::Result<&DatabaseConnection>;
 }
 
-impl UserRepository {
-    pub async fn get_all(&self) -> anyhow::Result<Vec<users::Model>> {
-        let connection = self.lazy_connector.get_connection().await?;
+type Identifier = nultr_shared_lib::request::Identifier;
 
-        let users = users::Entity::find().all(connection).await?;
+#[async_trait]
+pub trait RepositoryTrait<E>
+where
+    E: EntityTrait,
+    E::ActiveModel: ActiveModelTrait<Entity = E> + Send,
+    E::Model: IntoActiveModel<E::ActiveModel>,
+    <E::PrimaryKey as PrimaryKeyTrait>::ValueType: From<Identifier>,
+    Self: DbConnectionContainerTrait,
+{
+    async fn exists_by_id(&self, id: Identifier) -> anyhow::Result<bool> {
+        let connection = self.get_connection().await?;
+        let exists = E::find_by_id(id).one(connection).await?.is_some();
 
-        Ok(users)
+        Ok(exists)
     }
 
-    pub async fn get_by_username(&self, username: String) -> anyhow::Result<Option<users::Model>> {
-        let connection = self.lazy_connector.get_connection().await?;
-
-        let filter = users::Column::Username.eq(username);
-        let user = users::Entity::find().filter(filter).one(connection).await?;
+    async fn get_by_id(&self, id: Identifier) -> anyhow::Result<Option<E::Model>> {
+        let connection = self.get_connection().await?;
+        let user = E::find_by_id(id).one(connection).await?;
 
         Ok(user)
     }
 
-    pub async fn get_by_id(&self, id: i32) -> anyhow::Result<Option<users::Model>> {
-        let connection = self.lazy_connector.get_connection().await?;
-
-        let user = users::Entity::find_by_id(id).one(connection).await?;
-
-        Ok(user)
-    }
-
-    pub async fn insert(&self, model: users::ActiveModel) -> anyhow::Result<()> {
-        let connection = self.lazy_connector.get_connection().await?;
-
-        model.insert(connection).await?;
+    async fn update(&self, model: E::ActiveModel) -> anyhow::Result<()> {
+        let connection = self.get_connection().await?;
+        model.update(connection).await?;
 
         Ok(())
     }
 
-    pub async fn delete(&self, model: users::Model) -> anyhow::Result<()> {
-        let connection = self.lazy_connector.get_connection().await?;
+    async fn insert(&self, active_model: E::ActiveModel) -> anyhow::Result<E::Model> {
+        let connection = self.get_connection().await?;
+        let model = active_model.insert(connection).await?;
 
-        let active_model: users::ActiveModel = model.into();
-
-        active_model.delete(connection).await?;
-
-        Ok(())
+        Ok(model)
     }
-}
 
-#[derive(Clone)]
-pub struct MessageRepository {
-    pub lazy_connector: Arc<LazyConnector>,
-}
-
-impl MessageRepository {
-    pub async fn insert(&self, model: messages::Model) -> anyhow::Result<()> {
-        let connection = self.lazy_connector.get_connection().await?;
-
-        let active_model: messages::ActiveModel = model.into();
-        active_model.insert(connection).await?;
+    async fn delete(&self, model: E::ActiveModel) -> anyhow::Result<()> {
+        let connection = self.get_connection().await?;
+        model.delete(connection).await?;
 
         Ok(())
     }
 
-    pub async fn get_messages_between_users(
-        &self,
-        first_user_id: i32,
-        second_user_id: i32,
-        pagination: Pagination,
-    ) -> anyhow::Result<Vec<messages::Model>> {
-        let connection = self.lazy_connector.get_connection().await?;
+    async fn get_all(&self) -> anyhow::Result<Vec<E::Model>> {
+        let connection = self.get_connection().await?;
+        let models = E::find().all(connection).await?;
 
-        let filter = Condition::any()
-            .add(
-                Condition::all()
-                    .add(messages::Column::FromUserId.eq(first_user_id))
-                    .add(messages::Column::ToUserId.eq(second_user_id)),
-            )
-            .add(
-                Condition::all()
-                    .add(messages::Column::FromUserId.eq(second_user_id))
-                    .add(messages::Column::ToUserId.eq(first_user_id)),
-            );
-
-        let paginator = messages::Entity::find()
-            .filter(filter)
-            .order_by_desc(messages::Column::CreatedAt)
-            .paginate(connection, pagination.page_size);
-
-        let messages = paginator.fetch_page(pagination.page).await?;
-
-        Ok(messages)
+        Ok(models)
     }
 }
 
 pub struct LazyConnector {
     pub db_url: String,
-    pub db_pool: OnceCell<sea_orm::DatabaseConnection>,
+    pub db_pool: OnceCell<DatabaseConnection>,
 }
 
 impl Default for LazyConnector {
@@ -121,7 +86,7 @@ impl Default for LazyConnector {
 }
 
 impl LazyConnector {
-    async fn get_connection(&self) -> anyhow::Result<&sea_orm::DatabaseConnection> {
+    async fn get_connection(&self) -> anyhow::Result<&DatabaseConnection> {
         self.db_pool
             .get_or_try_init(|| async {
                 let db = sea_orm::Database::connect(&self.db_url).await?;
@@ -131,6 +96,7 @@ impl LazyConnector {
             .await
     }
 }
+
 #[derive(Deserialize)]
 pub struct Pagination {
     pub page: u64,

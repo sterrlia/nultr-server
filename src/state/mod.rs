@@ -3,22 +3,30 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::{auth, db};
+use crate::{auth, config, db::{self, repository::{MessageRepository, RoomRepository, UserRepository}}};
 
-pub struct MessageFromUser {
-    pub id: Uuid,
+#[derive(Clone)]
+pub enum ThreadEvent {
+    UserMessage(UserMessage),
+    MessageRead(Uuid),
+}
+
+#[derive(Clone)]
+pub struct UserMessage {
+    pub uuid: Uuid,
     pub from_user_id: i32,
     pub content: String,
 }
 
 pub struct MutexState {
-    pub user_message_sender_map: HashMap<i32, mpsc::UnboundedSender<MessageFromUser>>,
+    pub user_message_sender_map: HashMap<i32, mpsc::UnboundedSender<ThreadEvent>>,
 }
 
 #[derive(Clone)]
 pub struct ServiceState {
-    pub user_repository: db::UserRepository,
-    pub message_repository: db::MessageRepository,
+    pub user_repository: UserRepository,
+    pub room_repository: RoomRepository,
+    pub message_repository: MessageRepository,
     pub password_hasher: auth::PasswordHasher,
     pub jwt_encoder: auth::jwt::Encoder,
 }
@@ -26,12 +34,15 @@ pub struct ServiceState {
 impl Default for ServiceState {
     fn default() -> Self {
         let lazy_connector = Arc::new(db::LazyConnector::default());
-
-        let user_repository = db::UserRepository {
+        let room_repository = RoomRepository {
             lazy_connector: lazy_connector.clone(),
         };
 
-        let message_repository = db::MessageRepository { lazy_connector };
+        let user_repository = UserRepository {
+            lazy_connector: lazy_connector.clone(),
+        };
+
+        let message_repository = MessageRepository { lazy_connector };
 
         let password_hasher = auth::PasswordHasher::default();
 
@@ -39,6 +50,7 @@ impl Default for ServiceState {
 
         Self {
             user_repository,
+            room_repository,
             message_repository,
             password_hasher,
             jwt_encoder,
@@ -48,19 +60,22 @@ impl Default for ServiceState {
 
 pub struct CliState {
     pub password_hasher: auth::PasswordHasher,
-    pub user_repository: db::UserRepository,
+    pub user_repository: UserRepository,
 }
 
 impl Default for CliState {
     fn default() -> Self {
         let lazy_connector = Arc::new(db::LazyConnector::default());
 
-        let user_repository = db::UserRepository {
+        let user_repository = UserRepository {
             lazy_connector: lazy_connector.clone(),
         };
 
         let password_hasher = auth::PasswordHasher::default();
 
-        Self { password_hasher, user_repository }
+        Self {
+            password_hasher,
+            user_repository,
+        }
     }
 }

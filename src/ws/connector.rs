@@ -1,7 +1,6 @@
 use axum::{
-    Json, extract::
-        ws::{WebSocket, WebSocketUpgrade}
-    ,
+    Json,
+    extract::ws::{WebSocket, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -12,18 +11,15 @@ use tokio::sync::{
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
-//allows to split the websocket stream into separate TX and RX branches
 use futures::stream::StreamExt;
 
-use crate::{auth, state::{self, MessageFromUser}};
+use crate::{
+    auth,
+    state::{self, ThreadEvent},
+};
 
 use super::controller;
 
-/// The handler for the HTTP request (this gets called when the HTTP request lands at the start
-/// of websocket negotiation). After this completes, the actual switching from HTTP to
-/// websocket protocol will occur.
-/// This is the last point where we can extract TCP/IP metadata such as IP address of the client
-/// as well as things from HTTP headers such as user-agent of the browser etc.
 pub async fn handle(
     ws: WebSocketUpgrade,
     addr: SocketAddr,
@@ -33,7 +29,7 @@ pub async fn handle(
 ) -> impl IntoResponse {
     tracing::debug!("{addr} connected.");
 
-    let (tx, rx) = mpsc::unbounded_channel::<MessageFromUser>();
+    let (tx, rx) = mpsc::unbounded_channel::<ThreadEvent>();
 
     mutex_state
         .lock()
@@ -41,28 +37,16 @@ pub async fn handle(
         .user_message_sender_map
         .insert(claims.user_id, tx);
 
-    // finalize the upgrade process by returning upgrade callback.
-    // we can customize the callback by sending additional info such as address.
-    ws.on_upgrade(move |socket| {
-        handle_socket(
-            socket,
-            addr,
-            service_state,
-            mutex_state,
-            claims,
-            rx,
-        )
-    })
+    ws.on_upgrade(move |socket| handle_socket(socket, addr, service_state, mutex_state, claims, rx))
 }
 
-/// Actual websocket statemachine (one will be spawned per connection)
 async fn handle_socket(
     socket: WebSocket,
     addr: SocketAddr,
     service_state: state::ServiceState,
     mutex_state: Arc<Mutex<state::MutexState>>,
     claims: auth::jwt::Claims,
-    user_message_receiver: UnboundedReceiver<MessageFromUser>
+    user_message_receiver: UnboundedReceiver<ThreadEvent>,
 ) {
     let (ws_sender, ws_receiver) = socket.split();
 
@@ -75,7 +59,7 @@ async fn handle_socket(
         ws_receiver,
     };
 
-    tracing::error!("Websocket handler started {addr}");
+    tracing::debug!("Websocket handler started {addr}");
 
     while let Some(msg) = handler.get_message().await {
         if let Err(error) = handler.process(msg).await {

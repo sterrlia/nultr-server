@@ -5,9 +5,8 @@ use axum::{
     http::{StatusCode, header, request},
     response::IntoResponse,
 };
-use headers::{Authorization, authorization::Bearer};
-use rust_api_kit::http::client::Response;
 use nultr_shared_lib::request::AuthError;
+use rust_api_kit::http::client::Response;
 
 use crate::state;
 
@@ -36,15 +35,24 @@ impl FromRequestParts<state::ServiceState> for jwt::Claims {
             })?
             .trim_start_matches(|c: char| c.is_whitespace() || c.is_control());
 
-        let token = auth_header.strip_prefix("Bearer ").ok_or({
-            tracing::error!("Cannot strip bearer prefix on {auth_header}");
+        let token = auth_header
+            .strip_prefix("Bearer ")
+            .or_else(|| auth_header.strip_prefix("bearer "))
+            .ok_or({
+                tracing::error!("Cannot strip bearer prefix on {auth_header}");
 
-            Response::UnexpectedError(AuthError::InvalidToken)
-        })?;
+                Response::UnexpectedError(AuthError::InvalidToken)
+            })?;
 
         let token_data = state
             .jwt_encoder
             .decode(token.to_string())
+            .inspect_err(|err| {
+                tracing::error!(
+                    "Bearer decode failed for token: {token}, with error: {:?}",
+                    err
+                )
+            })
             .map_err(|_| Response::UnexpectedError(AuthError::InvalidToken))?;
 
         Ok(token_data)

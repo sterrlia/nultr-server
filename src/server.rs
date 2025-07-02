@@ -3,7 +3,7 @@ use axum::{
     extract::{self, Query},
     routing::{any, post},
 };
-use nultr_shared_lib::request::{GetMessagesRequest, GetUsersRequest, LoginRequest};
+use nultr_shared_lib::request::{CreateRoomRequest, GetMessagesRequest, GetRoomsRequest, GetUsersRequest, LoginRequest};
 use rust_api_kit::generate_routes;
 use tokio::sync::Mutex;
 
@@ -24,6 +24,8 @@ pub async fn serve() {
         LoginRequest => http::controller::login,
         GetUsersRequest => http::controller::get_users,
         GetMessagesRequest => http::controller::get_messages,
+        CreateRoomRequest => http::controller::create_room,
+        GetRoomsRequest => http::controller::get_rooms
     };
 
     let ws_state = Arc::new(Mutex::new(state::MutexState {
@@ -45,11 +47,11 @@ pub async fn serve() {
                 }
             }),
         )
-        .with_state(state::ServiceState::default())
-        .layer(
-            TraceLayer::new_for_http()
-            .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-        );
+        .with_state(state::ServiceState::default());
+//        .layer(
+//            TraceLayer::new_for_http()
+//            .make_span_with(DefaultMakeSpan::default().include_headers(true)),
+//        );
 
     // run it with hyper
     let listener = tokio::net::TcpListener::bind(config::WS_URL.clone())
