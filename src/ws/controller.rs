@@ -1,10 +1,9 @@
 use anyhow::anyhow;
 use nultr_shared_lib::request::{
-    Identifier, UuidIdentifier, WsErrorResponse, WsMarkMessagesReadRequest, WsMessageRequest,
+    WsErrorResponse, WsMarkMessagesReadRequest, WsMessageRequest,
     WsMessageResponse, WsOkResponse, WsRequest, WsResponse,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
 use axum::extract::ws;
 
@@ -15,11 +14,10 @@ use futures::SinkExt;
 use futures::stream::{SplitSink, SplitStream};
 use sea_orm::ActiveValue::Set;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::db::entity::users;
 use crate::db::{RepositoryTrait, entity::messages};
-use crate::state::{MessagesReadEvent, ThreadEvent, UserMessage};
+use crate::state::{ThreadEvent, UserMessage};
 use crate::{auth, state};
 
 pub struct Controller {

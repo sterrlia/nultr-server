@@ -6,7 +6,7 @@ use nultr_shared_lib::{
     request::{
         AuthenticatedUnexpectedErrorResponse, CreatePrivateRoomErrorResponse,
         CreatePrivateRoomRequest, CreatePrivateRoomResponse, GetMessagesErrorResponse,
-        GetMessagesRequest, GetMessagesResponse, GetRoomsErrorResponse, GetRoomsRequest,
+        GetMessagesRequest, GetMessagesResponse, GetRoomsErrorResponse,
         GetRoomsResponse, GetUsersErrorResponse, GetUsersResponse, LoginErrorResponse,
         LoginRequest, LoginResponse, MessageResponse, RoomResponse, UnexpectedErrorResponse,
         UserResponse,
@@ -19,9 +19,9 @@ use sea_orm::ActiveValue::Set;
 use crate::{
     auth,
     db::{
-        self, DbConnectionContainerTrait, RepositoryTrait,
+        self, RepositoryTrait,
         entity::{
-            rooms::{self, ActiveModel},
+            rooms::{self},
             rooms_users,
         },
     },

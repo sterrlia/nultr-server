@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use std::{env, sync::LazyLock};
+use std::env;
 
 macro_rules! env_lazy {
     ($name:ident, $type:ty) => {

@@ -4,7 +4,7 @@ use nultr_shared_lib::request::WsMarkMessagesReadRequest;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::{auth, config, db::{self, repository::{MessageRepository, RoomRepository, UserRepository}}};
+use crate::{auth, db::{self, repository::{MessageRepository, RoomRepository, UserRepository}}};
 
 pub type MessagesReadEvent = WsMarkMessagesReadRequest;
 

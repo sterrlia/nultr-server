@@ -1,10 +1,10 @@
 use sea_orm::prelude::async_trait::async_trait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    IntoActiveModel, JoinType, PaginatorTrait, QueryFilter, QuerySelect, RelationTrait,
+    ActiveModelTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    IntoActiveModel,
     TransactionTrait,
 };
-use sea_orm::{ModelTrait, PrimaryKeyTrait, QueryOrder};
+use sea_orm::{ModelTrait, PrimaryKeyTrait};
 use serde::Deserialize;
 use tokio::sync::OnceCell;
 

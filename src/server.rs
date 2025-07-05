@@ -1,17 +1,14 @@
 use axum::{
     Router,
-    extract::{self, Query},
-    routing::{any, post},
+    extract::{self},
+    routing::any,
 };
 use nultr_shared_lib::request::{CreatePrivateRoomRequest, GetMessagesRequest, GetRoomsRequest, GetUsersRequest, LoginRequest};
 use rust_api_kit::generate_routes;
 use tokio::sync::Mutex;
 
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
-use tower_http::{
-    services::ServeDir,
-    trace::{DefaultMakeSpan, TraceLayer},
-};
+use tower_http::services::ServeDir;
 
 use axum::extract::connect_info::ConnectInfo;
 

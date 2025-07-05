@@ -6,11 +6,9 @@ use super::{
 };
 use nultr_shared_lib::request::UuidIdentifier;
 use sea_orm::{
-    ActiveValue::Set,
-    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult, JoinType,
+    ColumnTrait, DbBackend, EntityTrait, FromQueryResult, JoinType,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Statement,
     prelude::Expr,
-    sea_query::{Alias, SqliteQueryBuilder},
 };
 use std::sync::Arc;
 use uuid::Uuid;

@@ -1,9 +1,6 @@
 use axum::{
-    Json, RequestPartsExt,
-    body::Body,
     extract::FromRequestParts,
-    http::{StatusCode, header, request},
-    response::IntoResponse,
+    http::{header, request},
 };
 use nultr_shared_lib::request::AuthError;
 use rust_api_kit::http::client::Response;

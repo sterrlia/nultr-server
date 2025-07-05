@@ -1,10 +1,4 @@
 use anyhow::anyhow;
-use axum::{
-    RequestExt,
-    extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
-    response::IntoResponse,
-};
 use jsonwebtoken::{DecodingKey, Validation, decode, errors::Error as JwtError};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
