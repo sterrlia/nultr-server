@@ -1,7 +1,8 @@
 use sea_orm::prelude::async_trait::async_trait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel,
-    JoinType, PaginatorTrait, QueryFilter, QuerySelect, RelationTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    IntoActiveModel, JoinType, PaginatorTrait, QueryFilter, QuerySelect, RelationTrait,
+    TransactionTrait,
 };
 use sea_orm::{ModelTrait, PrimaryKeyTrait, QueryOrder};
 use serde::Deserialize;
@@ -15,6 +16,19 @@ pub mod repository;
 #[async_trait]
 pub trait DbConnectionContainerTrait {
     async fn get_connection(&self) -> anyhow::Result<&DatabaseConnection>;
+
+    // TODO: add macro
+    async fn begin_transaction(&self) -> anyhow::Result<DatabaseTransaction> {
+        let connection = self.get_connection().await?;
+        let transaction = connection.begin().await?;
+        Ok(transaction)
+    }
+
+    async fn end_transaction(&self, txn: DatabaseTransaction) -> anyhow::Result<()> {
+        txn.commit().await?;
+
+        Ok(())
+    }
 }
 
 type Identifier = nultr_shared_lib::request::Identifier;

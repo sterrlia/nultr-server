@@ -9,7 +9,7 @@ use tokio::sync::{
     mpsc::{self, UnboundedReceiver},
 };
 
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
 use futures::stream::StreamExt;
 
@@ -48,10 +48,12 @@ async fn handle_socket(
     claims: auth::jwt::Claims,
     user_message_receiver: UnboundedReceiver<ThreadEvent>,
 ) {
+    let user_id = claims.user_id;
+
     let (ws_sender, ws_receiver) = socket.split();
 
     let mut handler = controller::Controller {
-        mutex_state,
+        mutex_state: mutex_state.clone(),
         service_state,
         claims,
         user_message_receiver,
@@ -69,4 +71,10 @@ async fn handle_socket(
     }
 
     tracing::debug!("Websocket context {addr} destroyed");
+
+    mutex_state
+        .lock()
+        .await
+        .user_message_sender_map
+        .remove(&user_id);
 }

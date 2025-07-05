@@ -4,22 +4,26 @@ use axum::{
 };
 use nultr_shared_lib::{
     request::{
-        AuthenticatedUnexpectedErrorResponse, CreateRoomErrorResponse, CreateRoomRequest,
-        CreateRoomResponse, GetMessagesErrorResponse, GetMessagesRequest, GetMessagesResponse,
-        GetRoomsErrorResponse, GetRoomsRequest, GetRoomsResponse, GetUsersErrorResponse,
-        GetUsersResponse, LoginErrorResponse, LoginRequest, LoginResponse, MessageResponse,
-        RoomResponse, UnexpectedErrorResponse, UserResponse,
+        AuthenticatedUnexpectedErrorResponse, CreatePrivateRoomErrorResponse,
+        CreatePrivateRoomRequest, CreatePrivateRoomResponse, GetMessagesErrorResponse,
+        GetMessagesRequest, GetMessagesResponse, GetRoomsErrorResponse, GetRoomsRequest,
+        GetRoomsResponse, GetUsersErrorResponse, GetUsersResponse, LoginErrorResponse,
+        LoginRequest, LoginResponse, MessageResponse, RoomResponse, UnexpectedErrorResponse,
+        UserResponse,
     },
     util::MonoResult,
 };
-use rust_api_kit::http::client::{Response};
+use rust_api_kit::http::client::Response;
 use sea_orm::ActiveValue::Set;
 
 use crate::{
     auth,
     db::{
-        self, RepositoryTrait,
-        entity::rooms::{self, ActiveModel},
+        self, DbConnectionContainerTrait, RepositoryTrait,
+        entity::{
+            rooms::{self, ActiveModel},
+            rooms_users,
+        },
     },
     state,
 };
@@ -53,7 +57,7 @@ pub async fn get_rooms(
 ) -> AuthenticatedResponse<GetRoomsResponse, GetRoomsErrorResponse> {
     let rooms = state
         .room_repository
-        .get_by_user_id(claims.user_id)
+        .get_for_user(claims.user_id)
         .await?
         .iter()
         .map(|room| RoomResponse {
@@ -65,11 +69,27 @@ pub async fn get_rooms(
     Ok(Response::Ok(GetRoomsResponse(rooms)))
 }
 
-pub async fn create_room(
+pub async fn create_private_room(
     extract::State(state): extract::State<state::ServiceState>,
     claims: auth::jwt::Claims,
-    Json(input): Json<CreateRoomRequest>,
-) -> AuthenticatedResponse<CreateRoomResponse, CreateRoomErrorResponse> {
+    Json(input): Json<CreatePrivateRoomRequest>,
+) -> AuthenticatedResponse<CreatePrivateRoomResponse, CreatePrivateRoomErrorResponse> {
+    //let txn = state.room_repository.begin_transaction().await?;
+    // TODO: validate, lock by current user
+
+    let (recipient_result, current_user_result) = tokio::join!(
+        state.user_repository.get_by_id(input.receiver_user_id),
+        state.user_repository.get_by_id(claims.user_id)
+    );
+
+    let recipient = recipient_result?.ok_or(Response::Error(
+        CreatePrivateRoomErrorResponse::UserNotFound,
+    ))?;
+
+    let current_user = current_user_result?.ok_or(Response::Error(
+        CreatePrivateRoomErrorResponse::UserNotFound,
+    ))?;
+
     let room = state
         .room_repository
         .insert(rooms::ActiveModel {
@@ -78,14 +98,30 @@ pub async fn create_room(
         })
         .await?;
 
+    let room_name_for_current_usr = recipient.username;
+
+    let current_user_link = rooms_users::ActiveModel {
+        room_id: Set(room.id),
+        user_id: Set(claims.user_id),
+        generated_room_name: Set(Some(room_name_for_current_usr.clone())),
+    };
+
+    let recipient_link = rooms_users::ActiveModel {
+        room_id: Set(room.id),
+        user_id: Set(recipient.id),
+        generated_room_name: Set(Some(current_user.username)),
+    };
+
     state
         .room_repository
-        .add_users_to_room(room.id, vec![claims.user_id, input.receiver_user_id])
+        .insert_rooms_users(vec![current_user_link, recipient_link])
         .await?;
 
-    Ok(Response::Ok(CreateRoomResponse {
+    //state.room_repository.end_transaction(txn).await?;
+
+    Ok(Response::Ok(CreatePrivateRoomResponse {
         id: room.id,
-        name: room.name,
+        name: room_name_for_current_usr,
     }))
 }
 

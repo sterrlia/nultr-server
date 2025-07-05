@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use nultr_shared_lib::request::{
-    WsErrorResponse, WsMessageRequest, WsMessageResponse, WsOkResponse, WsRequest, WsResponse,
+    Identifier, UuidIdentifier, WsErrorResponse, WsMarkMessagesReadRequest, WsMessageRequest,
+    WsMessageResponse, WsOkResponse, WsRequest, WsResponse,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -16,8 +17,9 @@ use sea_orm::ActiveValue::Set;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
+use crate::db::entity::users;
 use crate::db::{RepositoryTrait, entity::messages};
-use crate::state::{ThreadEvent, UserMessage};
+use crate::state::{MessagesReadEvent, ThreadEvent, UserMessage};
 use crate::{auth, state};
 
 pub struct Controller {
@@ -85,16 +87,16 @@ impl Controller {
         match event {
             ThreadEvent::UserMessage(message) => {
                 let response = WsOkResponse::Message(WsMessageResponse {
-                    id: Uuid::new_v4(),
-                    user_id: message.from_user_id.clone(),
+                    uuid: message.uuid,
+                    user_id: message.from_user_id,
                     content: message.content.clone(),
                     created_at: Utc::now().naive_utc(),
                 });
 
                 self.send_ws_response(WsResponse::Ok(response)).await
             }
-            ThreadEvent::MessageRead(uuid) => {
-                let response = WsOkResponse::MessageRead(uuid);
+            ThreadEvent::MessagesRead(event) => {
+                let response = WsOkResponse::MessagesRead(event);
                 self.send_ws_response(WsResponse::Ok(response)).await
             }
         }
@@ -103,31 +105,50 @@ impl Controller {
     async fn process_ws_request(&mut self, request: WsRequest) -> anyhow::Result<()> {
         match request {
             WsRequest::Message(message) => self.send_message_to_user(message).await,
-            WsRequest::MessageRead(message_uuid) => self.mark_message_read(message_uuid).await,
+            WsRequest::MessagesRead(request) => self.mark_messages_read(request).await,
         }
     }
 
-    async fn mark_message_read(&mut self, message_uuid: Uuid) -> anyhow::Result<()> {
-        let found_message = self
-            .service_state
+    async fn mark_messages_read(
+        &mut self,
+        request: WsMarkMessagesReadRequest,
+    ) -> anyhow::Result<()> {
+        self.service_state
             .message_repository
-            .get_message_by_uuid(message_uuid)
+            .mark_messages_read(request.message_uuids.clone())
             .await?;
 
-        match found_message {
-            Some(message) => {
-                if !message.read {
-                    let mut active_model: messages::ActiveModel = message.into();
-                    active_model.read = Set(true);
-                    self.service_state.message_repository.update(active_model).await?;
-                }
+        let room_users = self
+            .service_state
+            .room_repository
+            .get_users_by_room(request.room_id)
+            .await?;
+
+        let is_user_member_of_room = room_users
+            .iter()
+            .any(|room_user| room_user.id == self.claims.user_id);
+
+        if !is_user_member_of_room {
+            tracing::error!(
+                "User is not member of room: {}, {}",
+                request.room_id,
+                self.claims.user_id
+            );
+
+            return self
+                .send_ws_response(WsResponse::Err(WsErrorResponse::NotMemberOfRoom))
+                .await;
+        }
+
+        let thread_event = state::ThreadEvent::MessagesRead(request);
+
+        for user in room_users {
+            if user.id == self.claims.user_id {
+                continue;
             }
-            None => {
-                self.send_ws_response(WsResponse::Err(WsErrorResponse::MessageNotFound(
-                    message_uuid,
-                )))
-                .await?
-            }
+
+            self.send_thread_event(user.id, thread_event.clone())
+                .await?;
         }
 
         Ok(())
@@ -174,6 +195,7 @@ impl Controller {
                 user_id: Set(self.claims.user_id),
                 room_id: Set(request.room_id),
                 content: Set(request.content.clone()),
+                read: Set(false),
                 created_at: Set(Utc::now().naive_utc()),
                 ..Default::default()
             };
@@ -192,6 +214,10 @@ impl Controller {
             });
 
             for user in room_users {
+                if user.id == self.claims.user_id {
+                    continue;
+                }
+
                 self.send_thread_event(user.id, thread_event.clone())
                     .await?;
             }

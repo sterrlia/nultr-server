@@ -30,7 +30,7 @@ impl MigrationTrait for Migration {
                     .table(Rooms::Table)
                     .if_not_exists()
                     .col(pk_auto(Rooms::Id))
-                    .col(string(Rooms::Name))
+                    .col(string_null(Rooms::Name))
                     .to_owned(),
             )
             .await?;
@@ -42,6 +42,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(integer(RoomsUsers::RoomId))
                     .col(integer(RoomsUsers::UserId))
+                    .col(string_null(RoomsUsers::GeneratedRoomName))
                     .primary_key(
                         Index::create()
                             .col(RoomsUsers::RoomId)
@@ -104,7 +105,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Users::Table).to_owned())
+            .drop_table(Table::drop().table(Messages::Table).to_owned())
             .await?;
 
         manager
@@ -116,7 +117,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .drop_table(Table::drop().table(Messages::Table).to_owned())
+            .drop_table(Table::drop().table(Users::Table).to_owned())
             .await
     }
 }
@@ -134,6 +135,7 @@ enum RoomsUsers {
     Table,
     RoomId,
     UserId,
+    GeneratedRoomName
 }
 
 #[derive(DeriveIden)]

@@ -3,7 +3,7 @@ use axum::{
     extract::{self, Query},
     routing::{any, post},
 };
-use nultr_shared_lib::request::{CreateRoomRequest, GetMessagesRequest, GetRoomsRequest, GetUsersRequest, LoginRequest};
+use nultr_shared_lib::request::{CreatePrivateRoomRequest, GetMessagesRequest, GetRoomsRequest, GetUsersRequest, LoginRequest};
 use rust_api_kit::generate_routes;
 use tokio::sync::Mutex;
 
@@ -24,7 +24,7 @@ pub async fn serve() {
         LoginRequest => http::controller::login,
         GetUsersRequest => http::controller::get_users,
         GetMessagesRequest => http::controller::get_messages,
-        CreateRoomRequest => http::controller::create_room,
+        CreatePrivateRoomRequest => http::controller::create_private_room,
         GetRoomsRequest => http::controller::get_rooms
     };
 

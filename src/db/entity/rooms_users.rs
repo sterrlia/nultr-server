@@ -9,6 +9,7 @@ pub struct Model {
     pub room_id: i32,
     #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: i32,
+    pub generated_room_name: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -4,9 +4,13 @@ use super::{
     DbConnectionContainerTrait, Identifier, LazyConnector, Pagination,
     entity::{messages, rooms, rooms_users, users},
 };
+use nultr_shared_lib::request::UuidIdentifier;
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, JoinType, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+    ActiveValue::Set,
+    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult, JoinType,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Statement,
+    prelude::Expr,
+    sea_query::{Alias, SqliteQueryBuilder},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -31,31 +35,38 @@ pub struct RoomRepository {
     pub lazy_connector: Arc<LazyConnector>,
 }
 
+#[derive(Debug, FromQueryResult)]
+pub struct PersonalizedRoomData {
+    pub id: Identifier,
+    pub name: String,
+}
+
 impl RoomRepository {
-    pub async fn get_by_user_id(&self, user_id: Identifier) -> anyhow::Result<Vec<rooms::Model>> {
+    pub async fn get_for_user(
+        &self,
+        user_id: Identifier,
+    ) -> anyhow::Result<Vec<PersonalizedRoomData>> {
         let connection = self.get_connection().await?;
-        let rooms = rooms::Entity::find()
-            .join(JoinType::InnerJoin, rooms_users::Relation::Rooms.def())
-            .filter(rooms_users::Column::UserId.eq(user_id))
-            .all(connection)
-            .await?;
+        let query = r#"
+            SELECT r.id as id, COALESCE(ru.generated_room_name, r.name, '#' || CAST(r.id as TEXT)) as name
+            FROM rooms r
+            INNER JOIN rooms_users ru ON r.id = ru.room_id
+            WHERE ru.user_id = ?
+        "#;
+
+        let rooms: Vec<PersonalizedRoomData> = PersonalizedRoomData::find_by_statement(
+            Statement::from_sql_and_values(DbBackend::Sqlite, query, vec![user_id.into()]),
+        )
+        .all(connection)
+        .await?;
 
         Ok(rooms)
     }
 
-    pub async fn add_users_to_room(
+    pub async fn insert_rooms_users(
         &self,
-        room_id: Identifier,
-        user_ids: Vec<Identifier>,
+        models: Vec<rooms_users::ActiveModel>,
     ) -> anyhow::Result<()> {
-        let models = user_ids
-            .iter()
-            .cloned()
-            .map(|user_id| rooms_users::ActiveModel {
-                room_id: Set(room_id),
-                user_id: Set(user_id),
-            });
-
         let connection = self.get_connection().await?;
         rooms_users::Entity::insert_many(models)
             .exec(connection)
@@ -109,5 +120,17 @@ impl MessageRepository {
         let messages = paginator.fetch_page(pagination.page).await?;
 
         Ok(messages)
+    }
+
+    pub async fn mark_messages_read(&self, message_uuids: Vec<UuidIdentifier>) -> anyhow::Result<()> {
+        let connection = self.get_connection().await?;
+
+        messages::Entity::update_many()
+            .col_expr(messages::Column::Read, Expr::value(true))
+            .filter(Expr::col(messages::Column::Uuid).is_in(message_uuids))
+            .exec(connection)
+            .await?;
+
+        Ok(())
     }
 }

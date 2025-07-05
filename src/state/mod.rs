@@ -1,14 +1,17 @@
 use std::{collections::HashMap, sync::Arc};
 
+use nultr_shared_lib::request::WsMarkMessagesReadRequest;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{auth, config, db::{self, repository::{MessageRepository, RoomRepository, UserRepository}}};
 
+pub type MessagesReadEvent = WsMarkMessagesReadRequest;
+
 #[derive(Clone)]
 pub enum ThreadEvent {
     UserMessage(UserMessage),
-    MessageRead(Uuid),
+    MessagesRead(MessagesReadEvent),
 }
 
 #[derive(Clone)]

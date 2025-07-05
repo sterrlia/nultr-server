@@ -9,7 +9,6 @@ mod ws;
 
 use clap::Parser;
 use cli::Cli;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
